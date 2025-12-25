@@ -1,1 +1,179 @@
+---
 
+# Generative Diffusion Models: Continuous and Discrete Frameworks
+
+> **Topic:** Denoising Diffusion Probabilistic Models (DDPM) and Discrete Denoising Diffusion Models (D3PM)
+
+## Project Overview
+
+This repository contains a comprehensive PyTorch implementation of two state-of-the-art generative diffusion frameworks trained on the MNIST dataset. The main goal is to explore the transition from continuous Gaussian diffusion processes (DDPM) to discrete state-space masking processes (D3PM), implementing both unconditional and class-conditional generation.
+
+The implementation of these algorithms was done from first principles (without reliance on high-level diffusion libraries) to demonstrate the underlying probabilistic mechanics, including Evidence Lower Bound (ELBO) optimization, Markov kernels, and noise scheduling dynamics.
+
+---
+
+## Key Features and Technical Highlights
+
+1. Continuous Diffusion (DDPM) 
+
+Implemented the seminal **Denoising Diffusion Probabilistic Models (Ho et al., 2020)** framework.
+
+* **Forward Process:** Modeled as a fixed Markov chain that gradually adds Gaussian noise to the data according to a variance schedule.
+* **Reverse Process:** Learned a parametrized Gaussian transition using a U-Net to predict the added noise.
+* **Sampling:** Implemented Langevin-like dynamics to iteratively denoise samples from isotropic Gaussian noise to valid image data.
+
+2. Discrete Diffusion (D3PM) 
+
+Implemented **Structured Denoising Diffusion Models in Discrete State-Spaces (Austin et al., 2021)**, focusing on the **Absorbing State** transition matrix.
+
+* **Discrete State Space:** Unlike DDPM, this model operates directly on discrete pixel tokens (0-255) plus a learnable `<MASK>` token.
+* **Forward Process:** Utilizes a transition matrix where tokens transition to a special absorbing state (MASK) based on a schedule, rather than adding Gaussian noise.
+* **Reverse Process:** The neural network predicts the categorical distribution of the original pixel, which is then marginalized to compute the posterior.
+
+3. Conditional Generation 
+
+Extended both frameworks to support **Class-Conditional Generation** (Classifier-Free Guidance equivalent approach via embeddings).
+
+* **Mechanism:** Integrated learned class embeddings into the U-Net architecture, modulating the intermediate feature maps via addition to the time-step embeddings.
+* **Result:** Enables targeted generation of specific MNIST digits (0-9) with high fidelity.
+
+4. Advanced Noise Scheduling 
+
+Analyzed the impact of noise scheduling on generation quality and mode collapse.
+
+* **Linear Schedule:** Standard monotonic noise increase.
+* **Cosine Schedule:** Implemented the schedule proposed by Nichol & Dhariwal (2021) and the Fisher-Rao Optimal schedule for discrete diffusion (Zhang, 2025). This schedule smooths the noise ramp-up, preserving information longer in the forward process and improving sample quality.
+
+---
+
+## Model Architecture
+
+The backbone for all models is a custom **Residual U-Net** designed for input resolution.
+
+* **Encoder/Decoder:** 4 levels of Downsampling/Upsampling with ResNet blocks.
+* **Attention Mechanism:** Self-attention blocks at lower resolutions to capture global spatial dependencies.
+* **Time and Class Conditioning:** Sinusoidal positional embeddings for time steps and learnable lookup tables for class labels, injected into every residual block.
+* **Output Heads:**
+* *DDPM:* Outputs a tensor of shape `(B, 1, 28, 28)` representing predicted noise.
+* *D3PM:* Outputs a tensor of shape `(B, 256, 28, 28)` representing logits over pixel values.
+
+---
+
+## Evaluation & Metrics
+
+Model performance is quantitatively evaluated using **Fréchet Inception Distance (FID)**.
+
+* **FID Calculation:** Computes the Wasserstein-2 distance between the feature distributions of real and generated images extracted from an Inception-v3 network.
+* **Analysis:** The project compares FID scores across different step counts (e.g., 500 vs 1000) and schedules (Linear vs Cosine) to validate theoretical convergence properties.
+
+---
+
+## Repository Structure
+
+```bash
+├── models.py        # U-Net architectures for DDPM, D3PM (Conditional and Unconditional)
+├── scheduler.py     # Noise schedulers (Linear, Cosine) and D3PM Masking logic
+├── ddpm.py          # Training and Sampling loop for Unconditional DDPM
+├── ddpm_cond.py     # Training and Sampling loop for Conditional DDPM
+├── d3pm.py          # Training and Sampling loop for Unconditional D3PM (Absorbing State)
+├── d3pm_cond.py     # Training and Sampling loop for Conditional D3PM
+├── utils.py         # FID score computation and helper functions
+├── generate.py      # Script to load trained models and generate final samples
+└── README.md        # Project documentation
+```
+
+---
+
+## Usage
+
+### Prerequisites
+
+### **Step 1: Setup Virtual Environment**
+
+A virtual environment should be created with the necessary libraries installed in it.
+
+```bash
+# Create a new environment with Python 3.10
+conda create -n diffusion_env python=3.10 -y
+
+# Activate the environment
+conda activate diffusion_env
+```
+
+### **Step 2: Install Dependencies**
+
+Install PyTorch and the other required libraries.
+
+*Note: The command below installs the standard PyTorch version. If you have a specific CUDA version (NVIDIA GPU), you might need a specific command from [pytorch.org](https://pytorch.org/), but this usually works for most standard setups.*
+
+```bash
+# Install PyTorch, TorchVision, and dependencies
+pip install torch torchvision torchmetrics matplotlib tqdm numpy
+```
+
+Make sure you are in the directory where you saved your python files (`ddpm.py`, `models.py`, etc.). You can navigate there using the `cd` command.
+
+
+### **Step 3: Run Training Commands**
+
+Now you can run the training scripts. You can copy and paste these directly into your terminal.
+
+**1. Train Unconditional DDPM (Linear Schedule)**
+
+```bash
+python ddpm.py --mode train --epochs 5 --batch_size 64 --scheduler linear --num_steps 1000
+```
+
+**2. Train Conditional DDPM (Cosine Schedule)**
+
+```bash
+python ddpm_cond.py --mode train --epochs 5 --batch_size 64 --scheduler cosine --num_steps 1000
+```
+
+**3. Train Discrete D3PM (Unconditional)**
+
+```bash
+python d3pm.py --mode train --epochs 5 --batch_size 64 --scheduler cosine --num_steps 1000
+```
+
+**4. Train Conditional Discrete D3PM**
+
+```bash
+python d3pm_cond.py --mode train --epochs 5 --batch_size 64 --scheduler cosine --num_steps 1000
+```
+
+### Sampling & Evaluation
+
+To generate samples and calculate FID scores:
+
+```bash
+python ddpm.py --mode sample --num_samples 64
+python ddpm.py --mode eval_fid
+```
+
+### **Step 4: Generate Samples & Evaluate**
+**Evaluate FID Score (Standard)**
+
+```bash
+python ddpm.py --mode eval_fid --num_steps 1000 --scheduler linear
+```
+
+**Generate Samples**
+Use the `generate.py` script to produce the `.pt` files which give the model parameters of the four models.
+
+```bash
+python generate.py
+```
+---
+
+## References
+
+This implementation is based on the following foundational papers:
+
+1. **Austin, J., et al. (2021).** *Structured Denoising Diffusion Models in Discrete State-Spaces*. NeurIPS 2021. 
+
+2. **Ho, J., Jain, A., & Abbeel, P. (2020).** *Denoising Diffusion Probabilistic Models*. NeurIPS 2020. 
+
+3. **Nichol, A., & Dhariwal, P. (2021).** *Improved Denoising Diffusion Probabilistic Models*. arXiv:2102.09672. 
+
+4. **Zhang, L. (2025).** *The Cosine Schedule is Fisher-Rao-Optimal for Masked Discrete Diffusion Models*. arXiv:2508.04884.
